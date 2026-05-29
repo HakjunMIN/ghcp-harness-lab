@@ -231,16 +231,6 @@ make prereqs
 | 제품 방향을 더 세게 검토하고 출시 전 QA/보안까지 보고 싶다 | gstack |
 | 세 도구를 함께 쓰고 싶다 | Ouroboros로 Seed 생성 → Superpowers로 TDD 구현 → gstack으로 리뷰/QA |
 
-## 현재 환경 참고
-
-이 세션에서 확인된 현재 로컬 환경은 다음과 같았습니다.
-
-- `git`, `bash`, `python3`, `gh` 사용 가능
-- `node`, `npm`, `pipx`, `uv`, `copilot`, `bun`은 현재 PATH에서 발견되지 않음
-- Ouroboros 랩은 Python 3.12+가 필요하지만 현재 `python3`는 3.9.6으로 감지됨
-
-따라서 이 저장소의 구조/문서 검증은 통과하지만, 실제 Superpowers/Ouroboros/GHCP 실행은 해당 도구 설치 후 진행해야 합니다.
-
 ## 라이선스
 
 이 랩 코드와 문서는 MIT로 사용할 수 있습니다. 외부 프로젝트(Superpowers, gstack, Ouroboros)는 각 프로젝트의 라이선스와 설치 지침을 따릅니다.
