@@ -2,7 +2,10 @@ from datetime import UTC, datetime
 import os
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import StreamingResponse
 
+from app.agent_service import AgentService
+from app.chat_stream import sse_event
 from app.models import (
     ConversationCreateRequest,
     ConversationsListResponse,
@@ -11,6 +14,8 @@ from app.models import (
     MessagesListResponse,
 )
 from app.repository import SqliteRepository
+
+agent_service = AgentService()
 
 
 def now_iso() -> str:
@@ -57,3 +62,17 @@ def list_messages(conversation_id: str) -> dict[str, list[dict[str, str]]]:
     if repository.get_conversation(conversation_id) is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
     return {"items": repository.list_messages(conversation_id)}
+
+
+@app.post("/api/chat/stream")
+def chat_stream(payload: dict[str, str]) -> StreamingResponse:
+    message = payload["message"]
+
+    def iterator():
+        chunks: list[str] = []
+        for token in agent_service.stream_reply(message):
+            chunks.append(token)
+            yield sse_event("delta", {"token": token})
+        yield sse_event("done", {"content": "".join(chunks)})
+
+    return StreamingResponse(iterator(), media_type="text/event-stream")
