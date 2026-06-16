@@ -28,3 +28,12 @@
 4. **Error handling paths:** SSE `error` events and graceful stream interruption for network failures.
 5. **UI polish:** Keyboard navigation, auto-scroll behavior, loading states, retry UI for failed submissions.
 6. **Deployment:** Container packaging, environment configuration, and cloud deployment (e.g., Azure App Service).
+
+## ChatGPT-Inspired Frontend Redesign
+
+- Replaced the bare prototype presentation with a focused dark chat interface.
+- Kept the existing frontend/backend API contracts unchanged.
+- Added component-level tests for the chat panel, composer, and conversation sidebar.
+- Added app-level smoke tests for the redesigned shell and send behavior.
+- Verified the frontend test suite and production build after the redesign.
+- Manual browser checks covered desktop and narrow mobile widths.

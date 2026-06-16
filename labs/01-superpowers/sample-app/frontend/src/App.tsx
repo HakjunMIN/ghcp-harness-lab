@@ -1,15 +1,11 @@
 import { useState } from "react";
 import { ConversationNav } from "./components/ConversationNav";
-import { ChatPanel } from "./components/ChatPanel";
+import { ChatPanel, type ChatMessage } from "./components/ChatPanel";
 import { Composer } from "./components/Composer";
 import "./styles/chatgpt.css";
 
 export default function App() {
-  const [messages, setMessages] = useState<{
-    id: string;
-    role: "user" | "assistant";
-    content: string;
-  }[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [conversationId, setConversationId] = useState<string | undefined>();
 
@@ -84,9 +80,13 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <ConversationNav onSelect={handleConversationSelect} />
+      <ConversationNav activeConversationId={conversationId} onSelect={handleConversationSelect} />
       <main className="chat-main">
-        <ChatPanel messages={messages} />
+        <header className="chat-main__header">
+          <button className="model-button" type="button">ChatGPT-inspired MVP</button>
+          <span className="chat-main__status">Local prototype</span>
+        </header>
+        <ChatPanel messages={messages} isStreaming={isStreaming} />
         <Composer onSend={handleSend} disabled={isStreaming} />
       </main>
     </div>

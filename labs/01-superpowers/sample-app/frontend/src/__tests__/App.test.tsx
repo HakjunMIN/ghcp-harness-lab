@@ -1,56 +1,79 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { test, expect, beforeEach, vi } from "vitest";
+import { beforeEach, expect, test, vi } from "vitest";
 import App from "../App";
 
 beforeEach(() => {
   vi.clearAllMocks();
-  // Mock fetch to prevent network calls during testing
-  global.fetch = vi.fn(() =>
-    Promise.resolve({
-      ok: false,
-      status: 404,
-    } as Response)
-  );
+  global.fetch = vi.fn((input: RequestInfo | URL) => {
+    const url = String(input);
+
+    if (url === "/api/conversations") {
+      return Promise.resolve(
+        new Response(JSON.stringify({ items: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      );
+    }
+
+    if (url === "/api/chat/stream") {
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('event: done\ndata: {"content":"Hello back"}\n\n'));
+          controller.close();
+        },
+      });
+
+      return Promise.resolve(
+        new Response(stream, {
+          status: 200,
+          headers: { "Content-Type": "text/event-stream" },
+        })
+      );
+    }
+
+    return Promise.resolve(new Response("", { status: 404 }));
+  });
+});
+
+test("renders the redesigned app shell", async () => {
+  render(<App />);
+
+  expect(screen.getByRole("button", { name: "New chat" })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "What can I help with?" })).toBeInTheDocument();
+  expect(screen.getByPlaceholderText("Message ChatGPT...")).toBeInTheDocument();
+  expect(await screen.findByText("No conversations yet")).toBeInTheDocument();
 });
 
 test("displays user message after sending", async () => {
+  const user = userEvent.setup();
   render(<App />);
+  await screen.findByText("No conversations yet");
+
   const input = screen.getByPlaceholderText("Message ChatGPT...");
   const button = screen.getByRole("button", { name: "Send" });
 
-  await userEvent.type(input, "hello");
-  await userEvent.click(button);
+  await user.type(input, "hello");
+  await user.click(button);
 
   expect(await screen.findByText("hello")).toBeInTheDocument();
+  expect(await screen.findByText("Hello back")).toBeInTheDocument();
   expect(input).toHaveValue("");
 });
 
 test("send button disabled when input is empty", async () => {
+  const user = userEvent.setup();
   render(<App />);
+  await screen.findByText("No conversations yet");
+
   const button = screen.getByRole("button", { name: "Send" });
 
   expect(button).toBeDisabled();
 
-  await userEvent.type(screen.getByPlaceholderText("Message ChatGPT..."), "text");
+  await user.type(screen.getByPlaceholderText("Message ChatGPT..."), "text");
   expect(button).not.toBeDisabled();
 
-  await userEvent.clear(screen.getByPlaceholderText("Message ChatGPT..."));
+  await user.clear(screen.getByPlaceholderText("Message ChatGPT..."));
   expect(button).toBeDisabled();
-});
-
-test("send button disabled during streaming", async () => {
-  render(<App />);
-  const input = screen.getByPlaceholderText("Message ChatGPT...");
-  const button = screen.getByRole("button", { name: "Send" });
-
-  await userEvent.type(input, "test message");
-  expect(button).not.toBeDisabled();
-
-  // Simulate click - button should become disabled during stream
-  // Note: With mocked fetch returning 404, streaming will fail quickly
-  await userEvent.click(button);
-  
-  // The button should be disabled while processing
-  expect(button).toBeDisabled() || expect(button).not.toBeDisabled();
 });

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { type KeyboardEvent, useState } from "react";
 
 export function Composer({
   onSend,
@@ -8,25 +8,51 @@ export function Composer({
   disabled?: boolean;
 }) {
   const [text, setText] = useState("");
+  const trimmedText = text.trim();
+  const cannotSend = Boolean(disabled) || trimmedText.length === 0;
+
+  const submit = () => {
+    if (cannotSend) {
+      return;
+    }
+
+    onSend(trimmedText);
+    setText("");
+  };
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      submit();
+    }
+  };
+
   return (
-    <div style={{ padding: 16 }}>
-      <input
-        placeholder="Message ChatGPT..."
-        value={text}
-        onChange={(e) => setText(e.currentTarget.value)}
-        disabled={disabled}
-      />
-      <button
-        onClick={() => {
-          if (text.trim()) {
-            onSend(text);
-            setText("");
-          }
-        }}
-        disabled={disabled || !text.trim()}
-      >
-        Send
-      </button>
-    </div>
+    <form
+      className="composer-wrap"
+      aria-label="Message composer"
+      onSubmit={(event) => {
+        event.preventDefault();
+        submit();
+      }}
+    >
+      <div className="composer-shell">
+        <button className="composer-action" type="button" aria-label="Add context" disabled={disabled}>
+          +
+        </button>
+        <textarea
+          className="composer-input"
+          placeholder="Message ChatGPT..."
+          value={text}
+          onChange={(event) => setText(event.currentTarget.value)}
+          onKeyDown={handleKeyDown}
+          disabled={disabled}
+          rows={1}
+        />
+        <button className="composer-send" type="submit" disabled={cannotSend}>
+          Send
+        </button>
+      </div>
+    </form>
   );
 }
