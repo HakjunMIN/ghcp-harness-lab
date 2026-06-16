@@ -81,13 +81,16 @@ def chat_stream(payload: ChatStreamRequest) -> StreamingResponse:
     repository.add_message(conversation_id, "user", message, now_iso())
 
     def iterator():
-        chunks: list[str] = []
-        for token in agent_service.stream_reply(message):
-            chunks.append(token)
-            yield sse_event("delta", {"token": token})
-        content = "".join(chunks)
-        # Store assistant message after streaming completes
-        repository.add_message(conversation_id, "assistant", content, now_iso())
-        yield sse_event("done", {"content": content})
+        try:
+            chunks: list[str] = []
+            for token in agent_service.stream_reply(message):
+                chunks.append(token)
+                yield sse_event("delta", {"token": token})
+            content = "".join(chunks)
+            # Store assistant message after streaming completes
+            repository.add_message(conversation_id, "assistant", content, now_iso())
+            yield sse_event("done", {"content": content})
+        except Exception as e:
+            yield sse_event("error", {"error": str(e)})
 
     return StreamingResponse(iterator(), media_type="text/event-stream")

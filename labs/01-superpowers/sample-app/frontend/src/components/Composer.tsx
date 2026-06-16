@@ -1,15 +1,32 @@
 import { useState } from "react";
 
-export function Composer({ onSend }: { onSend: (text: string) => void }) {
+export function Composer({
+  onSend,
+  disabled,
+}: {
+  onSend: (text: string) => void;
+  disabled?: boolean;
+}) {
   const [text, setText] = useState("");
   return (
-    <div style={{padding:16}}>
+    <div style={{ padding: 16 }}>
       <input
         placeholder="Message ChatGPT..."
         value={text}
         onChange={(e) => setText(e.currentTarget.value)}
+        disabled={disabled}
       />
-      <button onClick={() => { onSend(text); setText(""); }}>Send</button>
+      <button
+        onClick={() => {
+          if (text.trim()) {
+            onSend(text);
+            setText("");
+          }
+        }}
+        disabled={disabled || !text.trim()}
+      >
+        Send
+      </button>
     </div>
   );
 }
