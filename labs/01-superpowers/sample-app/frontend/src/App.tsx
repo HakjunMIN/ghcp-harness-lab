@@ -6,6 +6,7 @@ import "./styles/chatgpt.css";
 
 export default function App() {
   const [messages, setMessages] = useState<{
+    id: string;
     role: "user" | "assistant";
     content: string;
   }[]>([]);
@@ -16,7 +17,7 @@ export default function App() {
       <main className="chat-main">
         <ChatPanel messages={messages} />
         <Composer
-          onSend={(text) => setMessages((prev) => [...prev, { role: "user", content: text }])}
+          onSend={(text) => setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "user", content: text }])}
         />
       </main>
     </div>

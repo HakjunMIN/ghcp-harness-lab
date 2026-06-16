@@ -7,7 +7,7 @@ export function Composer({ onSend }: { onSend: (text: string) => void }) {
       <input
         placeholder="Message ChatGPT..."
         value={text}
-        onChange={(e) => setText((e.target as HTMLInputElement).value)}
+        onChange={(e) => setText(e.currentTarget.value)}
       />
       <button onClick={() => { onSend(text); setText(""); }}>Send</button>
     </div>

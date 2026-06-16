@@ -7,5 +7,5 @@ test("sends prompt and shows streaming assistant message", async () => {
   render(<App />);
   await userEvent.type(screen.getByPlaceholderText("Message ChatGPT..."), "hello");
   await userEvent.click(screen.getByRole("button", { name: "Send" }));
-  expect(await screen.findByText("hello")).toBeDefined();
+  expect(await screen.findByText("hello")).toBeInTheDocument();
 });
