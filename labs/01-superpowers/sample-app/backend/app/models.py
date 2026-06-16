@@ -29,6 +29,7 @@ class MessageCreateRequest(BaseModel):
 
 class ChatStreamRequest(BaseModel):
     message: str
+    conversation_id: str | None = None
 
 
 class MessageResponse(BaseModel):

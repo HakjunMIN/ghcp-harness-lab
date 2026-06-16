@@ -68,12 +68,26 @@ def list_messages(conversation_id: str) -> dict[str, list[dict[str, str]]]:
 @app.post("/api/chat/stream")
 def chat_stream(payload: ChatStreamRequest) -> StreamingResponse:
     message = payload.message
+    conversation_id = payload.conversation_id
+
+    repository = get_repository()
+
+    # If no conversation provided, create one (for backward compatibility with existing tests)
+    if not conversation_id:
+        conv = repository.create_conversation("Chat", now_iso())
+        conversation_id = conv["id"]
+
+    # Store user message
+    repository.add_message(conversation_id, "user", message, now_iso())
 
     def iterator():
         chunks: list[str] = []
         for token in agent_service.stream_reply(message):
             chunks.append(token)
             yield sse_event("delta", {"token": token})
-        yield sse_event("done", {"content": "".join(chunks)})
+        content = "".join(chunks)
+        # Store assistant message after streaming completes
+        repository.add_message(conversation_id, "assistant", content, now_iso())
+        yield sse_event("done", {"content": content})
 
     return StreamingResponse(iterator(), media_type="text/event-stream")
