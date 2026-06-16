@@ -11,6 +11,24 @@ export default function App() {
     content: string;
   }[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [conversationId, setConversationId] = useState<string | undefined>();
+
+  const handleConversationSelect = async (id: string) => {
+    setConversationId(id);
+    setMessages([]);
+    
+    try {
+      const response = await fetch(`/api/conversations/${id}/messages`);
+      if (!response.ok) {
+        console.error("Failed to load messages");
+        return;
+      }
+      const data = await response.json();
+      setMessages(data.items || []);
+    } catch (error) {
+      console.error("Failed to load messages:", error);
+    }
+  };
 
   const handleSend = async (text: string) => {
     const userMsg = { id: crypto.randomUUID(), role: "user" as const, content: text };
@@ -22,7 +40,7 @@ export default function App() {
     setIsStreaming(true);
     try {
       const { sendMessage } = await import("./lib/api");
-      await sendMessage(text, undefined, (delta) => {
+      await sendMessage(text, conversationId, (delta) => {
         if (delta.type === "delta" && delta.token) {
           assistantContent += delta.token;
           setMessages((prev) => {
@@ -66,7 +84,7 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <ConversationNav />
+      <ConversationNav onSelect={handleConversationSelect} />
       <main className="chat-main">
         <ChatPanel messages={messages} />
         <Composer onSend={handleSend} disabled={isStreaming} />

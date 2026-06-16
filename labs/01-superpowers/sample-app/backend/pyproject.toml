@@ -2,7 +2,7 @@
 name = "sample-backend"
 version = "0.0.0"
 description = "Minimal backend project for tests"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 
 dependencies = [
   "fastapi>=0.95",
