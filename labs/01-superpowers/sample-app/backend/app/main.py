@@ -12,6 +12,7 @@ from app.models import (
     HealthResponse,
     MessageCreateRequest,
     MessagesListResponse,
+    ChatStreamRequest,
 )
 from app.repository import SqliteRepository
 
@@ -65,8 +66,8 @@ def list_messages(conversation_id: str) -> dict[str, list[dict[str, str]]]:
 
 
 @app.post("/api/chat/stream")
-def chat_stream(payload: dict[str, str]) -> StreamingResponse:
-    message = payload["message"]
+def chat_stream(payload: ChatStreamRequest) -> StreamingResponse:
+    message = payload.message
 
     def iterator():
         chunks: list[str] = []
