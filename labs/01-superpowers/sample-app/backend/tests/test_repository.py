@@ -40,3 +40,18 @@ def test_append_and_fetch_messages(tmp_path):
     fetched = client.get(f"/api/conversations/{conversation_id}/messages")
     assert fetched.status_code == 200
     assert [item["content"] for item in fetched.json()["items"]] == ["hello", "hi there"]
+
+
+def test_invalid_role_rejected(tmp_path):
+    app.state.repository = SqliteRepository(str(tmp_path / "app.db"))
+    client = TestClient(app)
+
+    created = client.post("/api/conversations", json={"title": "Thread 2"})
+    conversation_id = created.json()["id"]
+
+    resp = client.post(
+        f"/api/conversations/{conversation_id}/messages",
+        json={"role": "invalid", "content": "bad"},
+    )
+    # Pydantic validation should reject invalid role values with 422
+    assert resp.status_code == 422

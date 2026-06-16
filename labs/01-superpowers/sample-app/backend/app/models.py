@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel
 
 
@@ -21,7 +23,7 @@ class ConversationsListResponse(BaseModel):
 
 
 class MessageCreateRequest(BaseModel):
-    role: str
+    role: Literal["user", "assistant"]
     content: str
 
 

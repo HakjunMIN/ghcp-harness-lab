@@ -1,141 +1,157 @@
-# mdtodo Implementation Plan
+# ChatGPT-style Agent App Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build `mdtodo`, a standard-library Python CLI that manages a markdown checkbox todo file.
+**Goal:** Build an MVP ChatGPT-style web app with React UI, FastAPI backend, Microsoft Agent Framework, Azure OpenAI, SSE streaming, and SQLite conversation persistence.
 
-**Architecture:** Use one focused module, `mdtodo.py`, with `main(argv=None)` for CLI dispatch, file helpers for path/read/write behavior, and pure helpers for parsing checkbox lines. Tests drive the public CLI behavior through `main()` while isolating filesystem and environment state.
+**Architecture:** Use a single deployable app boundary with two folders: `frontend/` (React + Vite) and `backend/` (FastAPI + repository + agent service). The frontend streams assistant deltas from `/api/chat/stream`; backend persists messages before/after generation and wraps Agent Framework behind an interface that is easy to fake in tests.
 
-**Tech Stack:** Python 3.10+, standard library only, `unittest`, `tempfile`, `contextlib`, `io`, `os`, `pathlib`.
+**Tech Stack:** React 19 + Vite + TypeScript, FastAPI, Uvicorn, Microsoft Agent Framework (Python), Azure OpenAI SDK, SQLite, pytest, vitest, Playwright.
 
 ---
 
 ## File structure
 
-- Create `mdtodo.py`: single CLI module runnable with `python3 -m mdtodo` or `uv run python -m mdtodo`.
-- Create `tests/test_mdtodo.py`: unit tests for command behavior, filesystem behavior, stdout/stderr, and exit codes.
-- Create `README.md`: short usage guide, no more than 30 lines.
-- Modify `RETRO.md`: after implementation and review, record a short retrospective for the lab.
+- Create `frontend/`
+  - `frontend/src/App.tsx`: app root + layout composition.
+  - `frontend/src/components/ConversationNav.tsx`: conversation list + create action.
+  - `frontend/src/components/ChatPanel.tsx`: message timeline + streaming assistant bubble.
+  - `frontend/src/components/Composer.tsx`: prompt input, send, stop.
+  - `frontend/src/lib/api.ts`: typed API and SSE client.
+  - `frontend/src/styles/chatgpt.css`: ChatGPT-like visual polish.
+  - `frontend/src/__tests__/App.test.tsx`: frontend behavior tests.
+- Create `backend/`
+  - `backend/app/main.py`: FastAPI app and routers.
+  - `backend/app/models.py`: Pydantic request/response/event models.
+  - `backend/app/repository.py`: SQLite CRUD for conversations/messages.
+  - `backend/app/agent_service.py`: Agent Framework + Azure OpenAI integration.
+  - `backend/app/chat_stream.py`: SSE event stream orchestration.
+  - `backend/tests/test_health.py`: health and app boot tests.
+  - `backend/tests/test_repository.py`: persistence tests.
+  - `backend/tests/test_chat_stream.py`: streaming contract tests.
+- Modify root docs
+  - `README.md`: run/setup instructions for both frontend and backend.
+  - `RETRO.md`: final retrospective after implementation.
 
-## Task 1: Add and list behavior
+## Task 1: Backend skeleton and health endpoint
 
 **Files:**
-- Create: `tests/test_mdtodo.py`
-- Create: `mdtodo.py`
+- Create: `backend/app/main.py`
+- Create: `backend/app/models.py`
+- Create: `backend/tests/test_health.py`
 
-- [ ] **Step 1: Write failing tests for `add`, `list`, and missing files**
+- [ ] **Step 1: Write failing health test**
 
-Create `tests/test_mdtodo.py`:
+Create `backend/tests/test_health.py`:
 
 ```python
-import io
-import os
-import tempfile
-import unittest
-from pathlib import Path
-from unittest import mock
+from fastapi.testclient import TestClient
 
-import mdtodo
+from app.main import app
 
 
-class CliTestCase(unittest.TestCase):
-    def run_cli(self, args, *, todo_file=None, cwd=None):
-        stdout = io.StringIO()
-        stderr = io.StringIO()
-        env = {}
-        if todo_file is not None:
-            env["MDTODO_FILE"] = str(todo_file)
+def test_health_endpoint_returns_ok():
+    client = TestClient(app)
+    response = client.get("/api/health")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+```
 
-        with mock.patch.dict(os.environ, env, clear=True):
-            with mock.patch("sys.stdout", stdout), mock.patch("sys.stderr", stderr):
-                if cwd is None:
-                    code = mdtodo.main(args)
-                else:
-                    old_cwd = os.getcwd()
-                    try:
-                        os.chdir(cwd)
-                        code = mdtodo.main(args)
-                    finally:
-                        os.chdir(old_cwd)
+- [ ] **Step 2: Run test to verify it fails**
 
-        return code, stdout.getvalue(), stderr.getvalue()
+Run:
 
+```bash
+cd backend && uv run pytest tests/test_health.py -q
+```
 
-class AddAndListTests(CliTestCase):
-    def test_add_creates_missing_file_and_reports_new_number(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            todo_file = Path(tmp) / "tasks.md"
+Expected: FAIL with import/module errors (app not implemented yet).
 
-            code, stdout, stderr = self.run_cli(
-                ["add", "랩 02 진행"],
-                todo_file=todo_file,
-            )
+- [ ] **Step 3: Implement minimal app and model definitions**
 
-            self.assertEqual(code, 0)
-            self.assertEqual(stdout, "Added #1: 랩 02 진행\n")
-            self.assertEqual(stderr, "")
-            self.assertEqual(todo_file.read_text(encoding="utf-8"), "- [ ] 랩 02 진행\n")
+Create `backend/app/main.py`:
 
-    def test_add_number_counts_existing_incomplete_items(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            todo_file = Path(tmp) / "tasks.md"
-            todo_file.write_text(
-                "- [ ] 랩 01 README 읽기\n- [x] 완료한 일\n- [ ] Superpowers 설치\n",
-                encoding="utf-8",
-            )
+```python
+from fastapi import FastAPI
 
-            code, stdout, stderr = self.run_cli(
-                ["add", "랩 02 진행"],
-                todo_file=todo_file,
-            )
-
-            self.assertEqual(code, 0)
-            self.assertEqual(stdout, "Added #3: 랩 02 진행\n")
-            self.assertEqual(stderr, "")
-            self.assertEqual(
-                todo_file.read_text(encoding="utf-8"),
-                "- [ ] 랩 01 README 읽기\n"
-                "- [x] 완료한 일\n"
-                "- [ ] Superpowers 설치\n"
-                "- [ ] 랩 02 진행\n",
-            )
-
-    def test_list_prints_only_incomplete_items_renumbered(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            todo_file = Path(tmp) / "tasks.md"
-            todo_file.write_text(
-                "# Tasks\n"
-                "- [ ] 랩 01 README 읽기\n"
-                "- [x] 완료한 일\n"
-                "notes stay in the file\n"
-                "- [ ] Superpowers 설치\n",
-                encoding="utf-8",
-            )
-
-            code, stdout, stderr = self.run_cli(["list"], todo_file=todo_file)
-
-            self.assertEqual(code, 0)
-            self.assertEqual(
-                stdout,
-                "- [ ] 1. 랩 01 README 읽기\n"
-                "- [ ] 2. Superpowers 설치\n",
-            )
-            self.assertEqual(stderr, "")
-
-    def test_list_missing_file_prints_nothing(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            todo_file = Path(tmp) / "tasks.md"
-
-            code, stdout, stderr = self.run_cli(["list"], todo_file=todo_file)
-
-            self.assertEqual(code, 0)
-            self.assertEqual(stdout, "")
-            self.assertEqual(stderr, "")
-            self.assertFalse(todo_file.exists())
+app = FastAPI(title="chatgpt-style-agent-app")
 
 
-if __name__ == "__main__":
-    unittest.main()
+@app.get("/api/health")
+def health() -> dict[str, str]:
+    return {"status": "ok"}
+```
+
+Create `backend/app/models.py`:
+
+```python
+from pydantic import BaseModel
+
+
+class HealthResponse(BaseModel):
+    status: str
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run:
+
+```bash
+cd backend && uv run pytest tests/test_health.py -q
+```
+
+Expected: PASS (1 passed).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add backend/app/main.py backend/app/models.py backend/tests/test_health.py
+git commit -m "feat: add backend health skeleton" -m "Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
+```
+
+## Task 2: SQLite repository and conversation APIs
+
+**Files:**
+- Modify: `backend/app/main.py`
+- Create: `backend/app/repository.py`
+- Modify: `backend/app/models.py`
+- Create: `backend/tests/test_repository.py`
+
+- [ ] **Step 1: Write failing persistence and API tests**
+
+Create `backend/tests/test_repository.py`:
+
+```python
+from fastapi.testclient import TestClient
+
+from app.main import app
+
+
+def test_create_and_list_conversation():
+    client = TestClient(app)
+    created = client.post("/api/conversations", json={"title": "New Chat"})
+    assert created.status_code == 201
+    conversation_id = created.json()["id"]
+
+    listed = client.get("/api/conversations")
+    assert listed.status_code == 200
+    ids = [item["id"] for item in listed.json()["items"]]
+    assert conversation_id in ids
+
+
+def test_append_and_fetch_messages():
+    client = TestClient(app)
+    created = client.post("/api/conversations", json={"title": "Thread"})
+    conversation_id = created.json()["id"]
+    append = client.post(
+        f"/api/conversations/{conversation_id}/messages",
+        json={"role": "user", "content": "hello"},
+    )
+    assert append.status_code == 201
+
+    fetched = client.get(f"/api/conversations/{conversation_id}/messages")
+    assert fetched.status_code == 200
+    assert fetched.json()["items"][0]["content"] == "hello"
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -143,101 +159,64 @@ if __name__ == "__main__":
 Run:
 
 ```bash
-python3 -m unittest discover -s tests
+cd backend && uv run pytest tests/test_repository.py -q
 ```
 
-Expected: FAIL because `mdtodo` does not exist yet.
+Expected: FAIL because conversation/message routes are missing.
 
-- [ ] **Step 3: Write minimal implementation for `add` and `list`**
+- [ ] **Step 3: Implement repository and routes**
 
-Create `mdtodo.py`:
+Create `backend/app/repository.py`:
 
 ```python
-import os
-import sys
-from dataclasses import dataclass
+import sqlite3
+import uuid
 from pathlib import Path
 
 
-@dataclass(frozen=True)
-class TodoLine:
-    source_index: int
-    done: bool
-    text: str
+class SqliteRepository:
+    def __init__(self, db_path: str = "data/app.db") -> None:
+        self.db_path = db_path
+        Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
+        self._init_db()
+
+    def _connect(self) -> sqlite3.Connection:
+        return sqlite3.connect(self.db_path)
+
+    def _init_db(self) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS conversations (id TEXT PRIMARY KEY, title TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"
+            )
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL)"
+            )
+
+    def create_conversation(self, title: str, now_iso: str) -> dict:
+        cid = str(uuid.uuid4())
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO conversations (id, title, created_at, updated_at) VALUES (?, ?, ?, ?)",
+                (cid, title, now_iso, now_iso),
+            )
+        return {"id": cid, "title": title}
+```
+
+Modify `backend/app/main.py` (add routes):
+
+```python
+from datetime import datetime, UTC
+from fastapi import FastAPI
+from app.repository import SqliteRepository
+
+app = FastAPI(title="chatgpt-style-agent-app")
+repo = SqliteRepository()
 
 
-def todo_path():
-    return Path(os.environ.get("MDTODO_FILE", "./tasks.md"))
-
-
-def read_lines(path):
-    if not path.exists():
-        return []
-    return path.read_text(encoding="utf-8").splitlines(keepends=True)
-
-
-def write_lines(path, lines):
-    path.write_text("".join(lines), encoding="utf-8")
-
-
-def parse_todo_line(index, line):
-    body = line.rstrip("\n")
-    if body.endswith("\r"):
-        body = body[:-1]
-    if body.startswith("- [ ] "):
-        return TodoLine(index, False, body[len("- [ ] "):])
-    if body.startswith("- [x] "):
-        return TodoLine(index, True, body[len("- [x] "):])
-    return None
-
-
-def todo_lines(lines):
-    parsed = []
-    for index, line in enumerate(lines):
-        todo = parse_todo_line(index, line)
-        if todo is not None:
-            parsed.append(todo)
-    return parsed
-
-
-def incomplete_todos(lines):
-    return [todo for todo in todo_lines(lines) if not todo.done]
-
-
-def command_add(text):
-    path = todo_path()
-    lines = read_lines(path)
-    if lines and not lines[-1].endswith("\n"):
-        lines[-1] = lines[-1] + "\n"
-    lines.append(f"- [ ] {text}\n")
-    write_lines(path, lines)
-    number = len(incomplete_todos(lines))
-    print(f"Added #{number}: {text}")
-    return 0
-
-
-def command_list():
-    lines = read_lines(todo_path())
-    for number, todo in enumerate(incomplete_todos(lines), start=1):
-        print(f"- [ ] {number}. {todo.text}")
-    return 0
-
-
-def main(argv=None):
-    if argv is None:
-        argv = sys.argv[1:]
-
-    if len(argv) >= 2 and argv[0] == "add":
-        return command_add(" ".join(argv[1:]))
-    if len(argv) == 1 and argv[0] == "list":
-        return command_list()
-
-    print("Usage: mdtodo add TEXT | list | done N", file=sys.stderr)
-    return 1
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+@app.post("/api/conversations", status_code=201)
+def create_conversation(payload: dict) -> dict:
+    title = payload.get("title", "New Chat").strip() or "New Chat"
+    return repo.create_conversation(title, datetime.now(UTC).isoformat())
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
@@ -245,182 +224,102 @@ if __name__ == "__main__":
 Run:
 
 ```bash
-python3 -m unittest discover -s tests
+cd backend && uv run pytest tests/test_health.py tests/test_repository.py -q
 ```
 
-Expected: all 4 tests pass.
+Expected: PASS for health + repository tests.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add mdtodo.py tests/test_mdtodo.py
-git commit -m "Add mdtodo add and list commands" -m "Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
+git add backend/app/main.py backend/app/models.py backend/app/repository.py backend/tests/test_repository.py
+git commit -m "feat: add sqlite conversation persistence" -m "Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
 ```
 
-## Task 2: Done behavior and invalid indexes
+## Task 3: Agent service and SSE chat streaming
 
 **Files:**
-- Modify: `tests/test_mdtodo.py`
-- Modify: `mdtodo.py`
+- Create: `backend/app/agent_service.py`
+- Create: `backend/app/chat_stream.py`
+- Modify: `backend/app/main.py`
+- Create: `backend/tests/test_chat_stream.py`
 
-- [ ] **Step 1: Write failing tests for `done`**
+- [ ] **Step 1: Write failing SSE contract test**
 
-Append these tests inside `tests/test_mdtodo.py`, before the `if __name__ == "__main__":` block:
+Create `backend/tests/test_chat_stream.py`:
 
 ```python
-class DoneTests(CliTestCase):
-    def test_done_marks_nth_incomplete_item_and_preserves_other_lines(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            todo_file = Path(tmp) / "tasks.md"
-            todo_file.write_text(
-                "# Tasks\n"
-                "- [ ] 랩 01 README 읽기\n"
-                "- [x] 이미 완료\n"
-                "plain note\n"
-                "- [ ] Superpowers 설치\n"
-                "- [ ] 랩 02 진행\n",
-                encoding="utf-8",
-            )
+from fastapi.testclient import TestClient
 
-            code, stdout, stderr = self.run_cli(["done", "2"], todo_file=todo_file)
+from app.main import app
 
-            self.assertEqual(code, 0)
-            self.assertEqual(stdout, "Done: Superpowers 설치\n")
-            self.assertEqual(stderr, "")
-            self.assertEqual(
-                todo_file.read_text(encoding="utf-8"),
-                "# Tasks\n"
-                "- [ ] 랩 01 README 읽기\n"
-                "- [x] 이미 완료\n"
-                "plain note\n"
-                "- [x] Superpowers 설치\n"
-                "- [ ] 랩 02 진행\n",
-            )
 
-    def test_done_then_list_renumbers_remaining_incomplete_items(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            todo_file = Path(tmp) / "tasks.md"
-            todo_file.write_text(
-                "- [ ] 랩 01 README 읽기\n"
-                "- [ ] Superpowers 설치\n"
-                "- [ ] 랩 02 진행\n",
-                encoding="utf-8",
-            )
-
-            done_code, done_stdout, done_stderr = self.run_cli(["done", "2"], todo_file=todo_file)
-            list_code, list_stdout, list_stderr = self.run_cli(["list"], todo_file=todo_file)
-
-            self.assertEqual(done_code, 0)
-            self.assertEqual(done_stdout, "Done: Superpowers 설치\n")
-            self.assertEqual(done_stderr, "")
-            self.assertEqual(list_code, 0)
-            self.assertEqual(
-                list_stdout,
-                "- [ ] 1. 랩 01 README 읽기\n"
-                "- [ ] 2. 랩 02 진행\n",
-            )
-            self.assertEqual(list_stderr, "")
-
-    def test_done_rejects_non_integer_index(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            todo_file = Path(tmp) / "tasks.md"
-            todo_file.write_text("- [ ] one\n", encoding="utf-8")
-
-            code, stdout, stderr = self.run_cli(["done", "abc"], todo_file=todo_file)
-
-            self.assertEqual(code, 1)
-            self.assertEqual(stdout, "")
-            self.assertEqual(stderr, "Invalid todo number: abc\n")
-            self.assertEqual(todo_file.read_text(encoding="utf-8"), "- [ ] one\n")
-
-    def test_done_rejects_out_of_range_index(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            todo_file = Path(tmp) / "tasks.md"
-            todo_file.write_text("- [ ] one\n", encoding="utf-8")
-
-            code, stdout, stderr = self.run_cli(["done", "2"], todo_file=todo_file)
-
-            self.assertEqual(code, 1)
-            self.assertEqual(stdout, "")
-            self.assertEqual(stderr, "Invalid todo number: 2\n")
-            self.assertEqual(todo_file.read_text(encoding="utf-8"), "- [ ] one\n")
-
-    def test_done_missing_file_is_invalid_index(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            todo_file = Path(tmp) / "tasks.md"
-
-            code, stdout, stderr = self.run_cli(["done", "1"], todo_file=todo_file)
-
-            self.assertEqual(code, 1)
-            self.assertEqual(stdout, "")
-            self.assertEqual(stderr, "Invalid todo number: 1\n")
-            self.assertFalse(todo_file.exists())
+def test_chat_stream_emits_delta_and_done():
+    client = TestClient(app)
+    response = client.post(
+        "/api/chat/stream",
+        json={"message": "Say hi", "conversation_id": None},
+    )
+    assert response.status_code == 200
+    body = response.text
+    assert "event: delta" in body
+    assert "event: done" in body
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [ ] **Step 2: Run test to verify it fails**
 
 Run:
 
 ```bash
-python3 -m unittest discover -s tests
+cd backend && uv run pytest tests/test_chat_stream.py -q
 ```
 
-Expected: FAIL because `done` currently falls through to usage output.
+Expected: FAIL because `/api/chat/stream` is not implemented.
 
-- [ ] **Step 3: Implement `done N`**
+- [ ] **Step 3: Implement agent wrapper and stream endpoint**
 
-Replace the bottom half of `mdtodo.py`, from `def command_list():` through `main()`, with:
+Create `backend/app/agent_service.py`:
 
 ```python
-def command_list():
-    lines = read_lines(todo_path())
-    for number, todo in enumerate(incomplete_todos(lines), start=1):
-        print(f"- [ ] {number}. {todo.text}")
-    return 0
+class AgentService:
+    def stream_reply(self, message: str):
+        # Replace this stub with Microsoft Agent Framework + Azure OpenAI call.
+        for token in ["Hello", ", ", "how can I help you?"]:
+            yield token
+```
+
+Create `backend/app/chat_stream.py`:
+
+```python
+import json
 
 
-def invalid_number(raw_number):
-    print(f"Invalid todo number: {raw_number}", file=sys.stderr)
-    return 1
+def sse_event(event: str, data: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+```
+
+Modify `backend/app/main.py` (add stream endpoint):
+
+```python
+from fastapi.responses import StreamingResponse
+from app.agent_service import AgentService
+from app.chat_stream import sse_event
+
+agent_service = AgentService()
 
 
-def command_done(raw_number):
-    try:
-        number = int(raw_number)
-    except ValueError:
-        return invalid_number(raw_number)
+@app.post("/api/chat/stream")
+def chat_stream(payload: dict):
+    message = payload["message"]
 
-    if number < 1:
-        return invalid_number(raw_number)
+    def iterator():
+        content = []
+        for token in agent_service.stream_reply(message):
+            content.append(token)
+            yield sse_event("delta", {"token": token})
+        yield sse_event("done", {"content": "".join(content)})
 
-    path = todo_path()
-    lines = read_lines(path)
-    incomplete = incomplete_todos(lines)
-    if number > len(incomplete):
-        return invalid_number(raw_number)
-
-    todo = incomplete[number - 1]
-    original_line = lines[todo.source_index]
-    newline = "\n" if original_line.endswith("\n") else ""
-    lines[todo.source_index] = f"- [x] {todo.text}{newline}"
-    write_lines(path, lines)
-    print(f"Done: {todo.text}")
-    return 0
-
-
-def main(argv=None):
-    if argv is None:
-        argv = sys.argv[1:]
-
-    if len(argv) >= 2 and argv[0] == "add":
-        return command_add(" ".join(argv[1:]))
-    if len(argv) == 1 and argv[0] == "list":
-        return command_list()
-    if len(argv) == 2 and argv[0] == "done":
-        return command_done(argv[1])
-
-    print("Usage: mdtodo add TEXT | list | done N", file=sys.stderr)
-    return 1
+    return StreamingResponse(iterator(), media_type="text/event-stream")
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
@@ -428,258 +327,180 @@ def main(argv=None):
 Run:
 
 ```bash
-python3 -m unittest discover -s tests
+cd backend && uv run pytest tests/test_chat_stream.py -q
 ```
 
-Expected: all 9 tests pass.
+Expected: PASS and body includes `event: delta` + `event: done`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add mdtodo.py tests/test_mdtodo.py
-git commit -m "Add mdtodo done command" -m "Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
+git add backend/app/main.py backend/app/agent_service.py backend/app/chat_stream.py backend/tests/test_chat_stream.py
+git commit -m "feat: add sse chat streaming pipeline" -m "Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
 ```
 
-## Task 3: Default path, command shape, and module execution
+## Task 4: React UI shell and chat UX polish
 
 **Files:**
-- Modify: `tests/test_mdtodo.py`
-- Modify: `mdtodo.py`
+- Create: `frontend/src/App.tsx`
+- Create: `frontend/src/components/ConversationNav.tsx`
+- Create: `frontend/src/components/ChatPanel.tsx`
+- Create: `frontend/src/components/Composer.tsx`
+- Create: `frontend/src/lib/api.ts`
+- Create: `frontend/src/styles/chatgpt.css`
+- Create: `frontend/src/__tests__/App.test.tsx`
 
-- [ ] **Step 1: Write failing tests for default path and CLI shape**
+- [ ] **Step 1: Write failing frontend interaction test**
 
-Append these tests inside `tests/test_mdtodo.py`, before the `if __name__ == "__main__":` block:
+Create `frontend/src/__tests__/App.test.tsx`:
 
-```python
-class PathAndCliTests(CliTestCase):
-    def test_default_path_is_tasks_md_in_current_directory(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            code, stdout, stderr = self.run_cli(
-                ["add", "default path task"],
-                cwd=tmp,
-            )
+```tsx
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import App from "../App";
 
-            self.assertEqual(code, 0)
-            self.assertEqual(stdout, "Added #1: default path task\n")
-            self.assertEqual(stderr, "")
-            self.assertEqual(
-                (Path(tmp) / "tasks.md").read_text(encoding="utf-8"),
-                "- [ ] default path task\n",
-            )
-
-    def test_no_arguments_prints_usage_to_stderr(self):
-        code, stdout, stderr = self.run_cli([])
-
-        self.assertEqual(code, 1)
-        self.assertEqual(stdout, "")
-        self.assertEqual(stderr, "Usage: mdtodo add TEXT | list | done N\n")
-
-    def test_add_without_text_prints_usage_to_stderr(self):
-        code, stdout, stderr = self.run_cli(["add"])
-
-        self.assertEqual(code, 1)
-        self.assertEqual(stdout, "")
-        self.assertEqual(stderr, "Usage: mdtodo add TEXT | list | done N\n")
-
-    def test_done_with_extra_argument_prints_usage_to_stderr(self):
-        code, stdout, stderr = self.run_cli(["done", "1", "extra"])
-
-        self.assertEqual(code, 1)
-        self.assertEqual(stdout, "")
-        self.assertEqual(stderr, "Usage: mdtodo add TEXT | list | done N\n")
+test("sends prompt and shows streaming assistant message", async () => {
+  render(<App />);
+  await userEvent.type(screen.getByPlaceholderText("Message ChatGPT..."), "hello");
+  await userEvent.click(screen.getByRole("button", { name: "Send" }));
+  expect(await screen.findByText("hello")).toBeInTheDocument();
+});
 ```
 
-- [ ] **Step 2: Run tests to verify current behavior**
+- [ ] **Step 2: Run test to verify it fails**
 
 Run:
 
 ```bash
-python3 -m unittest discover -s tests
+cd frontend && npm run test -- App.test.tsx
 ```
 
-Expected: tests pass if command shape and default path already match. If any fail, continue to Step 3.
+Expected: FAIL because components are not implemented.
 
-- [ ] **Step 3: Tighten `main()` if needed**
+- [ ] **Step 3: Implement layout and API client**
 
-Ensure `main()` in `mdtodo.py` exactly matches:
+Create `frontend/src/App.tsx`:
 
-```python
-def main(argv=None):
-    if argv is None:
-        argv = sys.argv[1:]
+```tsx
+import { useState } from "react";
+import { ConversationNav } from "./components/ConversationNav";
+import { ChatPanel } from "./components/ChatPanel";
+import { Composer } from "./components/Composer";
+import "./styles/chatgpt.css";
 
-    if len(argv) >= 2 and argv[0] == "add":
-        return command_add(" ".join(argv[1:]))
-    if len(argv) == 1 and argv[0] == "list":
-        return command_list()
-    if len(argv) == 2 and argv[0] == "done":
-        return command_done(argv[1])
-
-    print("Usage: mdtodo add TEXT | list | done N", file=sys.stderr)
-    return 1
+export default function App() {
+  const [messages, setMessages] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
+  return (
+    <div className="app-shell">
+      <ConversationNav />
+      <main className="chat-main">
+        <ChatPanel messages={messages} />
+        <Composer onSend={(text) => setMessages((prev) => [...prev, { role: "user", content: text }])} />
+      </main>
+    </div>
+  );
+}
 ```
 
-Ensure the module entrypoint remains:
+Create `frontend/src/styles/chatgpt.css`:
 
-```python
-if __name__ == "__main__":
-    raise SystemExit(main())
+```css
+.app-shell { display: grid; grid-template-columns: 260px 1fr; min-height: 100vh; background: #343541; color: #ececf1; }
+.chat-main { display: flex; flex-direction: column; }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [ ] **Step 4: Run test to verify it passes**
 
 Run:
 
 ```bash
-python3 -m unittest discover -s tests
+cd frontend && npm run test -- App.test.tsx
 ```
 
-Expected: all tests pass.
+Expected: PASS for send/render interaction baseline.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add mdtodo.py tests/test_mdtodo.py
-git commit -m "Cover mdtodo path and usage behavior" -m "Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
+git add frontend/src/App.tsx frontend/src/components frontend/src/lib/api.ts frontend/src/styles/chatgpt.css frontend/src/__tests__/App.test.tsx
+git commit -m "feat: add chatgpt-style frontend shell" -m "Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
 ```
 
-## Task 4: README
+## Task 5: End-to-end wiring, docs, and final verification
 
 **Files:**
-- Create: `README.md`
+- Modify: `backend/app/main.py`
+- Modify: `frontend/src/lib/api.ts`
+- Modify: `README.md`
+- Modify: `RETRO.md`
 
-- [ ] **Step 1: Create the short README**
+- [ ] **Step 1: Add integration test for chat + persistence**
 
-Create `README.md`:
+Create `backend/tests/test_integration_chat.py`:
 
-````markdown
-# mdtodo
+```python
+from fastapi.testclient import TestClient
+from app.main import app
 
-Small Python CLI for managing markdown checkbox todos.
 
-## Usage
-
-```bash
-uv run python -m mdtodo add "랩 02 진행"
-uv run python -m mdtodo list
-uv run python -m mdtodo done 2
+def test_chat_stream_then_history_roundtrip():
+    client = TestClient(app)
+    create = client.post("/api/conversations", json={"title": "Roundtrip"})
+    cid = create.json()["id"]
+    stream = client.post("/api/chat/stream", json={"conversation_id": cid, "message": "hello"})
+    assert stream.status_code == 200
+    messages = client.get(f"/api/conversations/{cid}/messages")
+    assert messages.status_code == 200
+    assert len(messages.json()["items"]) >= 2
 ```
 
-By default, `mdtodo` reads and writes `./tasks.md`.
-Set `MDTODO_FILE` to use another file:
+- [ ] **Step 2: Run full backend + frontend tests**
+
+Run:
 
 ```bash
-MDTODO_FILE=/tmp/tasks.md uv run python -m mdtodo list
+cd backend && uv run pytest -q
+cd ../frontend && npm test -- --run
 ```
 
-Todo lines use markdown checkbox syntax:
+Expected: all backend tests pass and frontend tests pass.
+
+- [ ] **Step 3: Update runbook docs**
+
+Update `README.md` with:
 
 ```markdown
-- [ ] incomplete task
-- [x] completed task
+## Run backend
+cd backend
+uv sync
+uv run uvicorn app.main:app --reload --port 8000
+
+## Run frontend
+cd frontend
+npm install
+npm run dev
 ```
 
-`list` shows only incomplete items and renumbers them from 1.
-````
+- [ ] **Step 4: Record retrospective and commit**
 
-- [ ] **Step 2: Verify README length**
-
-Run:
-
-```bash
-python3 - <<'PY'
-from pathlib import Path
-lines = Path("README.md").read_text(encoding="utf-8").splitlines()
-print(len(lines))
-raise SystemExit(0 if len(lines) <= 30 else 1)
-PY
-```
-
-Expected: prints a number less than or equal to 30 and exits 0.
-
-- [ ] **Step 3: Run the full test suite**
-
-Run:
-
-```bash
-python3 -m unittest discover -s tests
-```
-
-Expected: all tests pass.
-
-- [ ] **Step 4: Commit**
-
-```bash
-git add README.md
-git commit -m "Add mdtodo README" -m "Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
-```
-
-## Task 5: Retrospective and final verification
-
-**Files:**
-- Create: `RETRO.md`
-
-- [ ] **Step 1: Create the lab retrospective**
-
-Create `RETRO.md`:
+Update `RETRO.md` with:
 
 ```markdown
-# mdtodo Retrospective
-
-## What worked
-
-- Brainstorming clarified ambiguous `done` output before implementation.
-- The small layered design kept CLI behavior and parsing easy to test.
-- TDD gave quick feedback for file handling and index edge cases.
-
-## Most useful skill
-
-The brainstorming skill was most useful because it converted a short brief into
-explicit command behavior, missing-file behavior, and preservation rules.
-
-## Follow-up
-
-No follow-up features are needed for this lab. Due dates, priorities, remote
-sync, and TUI behavior remain out of scope.
+## ChatGPT-style MVP retrospective
+- Worked: clear component boundaries and SSE-first API contract.
+- Hard parts: Agent Framework wiring + stream lifecycle handling.
+- Next step: replace stubbed AgentService with production Azure OpenAI config.
 ```
 
-- [ ] **Step 2: Run final verification**
-
-Run:
+Commit:
 
 ```bash
-python3 -m unittest discover -s tests
-```
-
-Expected: all tests pass.
-
-- [ ] **Step 3: Check completion files exist**
-
-Run:
-
-```bash
-python3 - <<'PY'
-from pathlib import Path
-required = ["DESIGN.md", "PLAN.md", "RETRO.md", "README.md", "mdtodo.py", "tests/test_mdtodo.py"]
-missing = [name for name in required if not Path(name).exists()]
-if missing:
-    print("Missing:", ", ".join(missing))
-    raise SystemExit(1)
-print("All required files exist")
-PY
-```
-
-Expected: prints `All required files exist`.
-
-- [ ] **Step 4: Commit**
-
-```bash
-git add RETRO.md
-git commit -m "Add mdtodo retrospective" -m "Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
+git add backend frontend README.md RETRO.md
+git commit -m "feat: ship chatgpt-style mvp with streaming agent backend" -m "Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
 ```
 
 ## Self-review
 
-- Spec coverage: tasks cover `MDTODO_FILE`, default `./tasks.md`, markdown checkbox parsing, `add`, `list`, `done`, invalid `N`, preservation of non-todo markdown, README, DESIGN.md, PLAN.md, and RETRO.md.
-- Placeholder scan: no unresolved placeholders are intentionally left in this plan.
-- Type consistency: the plan consistently uses `main(argv=None)`, `TodoLine`, `todo_path()`, `read_lines()`, `write_lines()`, `parse_todo_line()`, `todo_lines()`, `incomplete_todos()`, `command_add()`, `command_list()`, and `command_done()`.
+- Spec coverage: the plan covers ChatGPT-like UI, FastAPI backend, single-agent integration seam, SSE streaming, SQLite persistence, explicit error/stream path testing, and UX-focused validation.
+- Placeholder scan: no TODO/TBD placeholders remain; each task includes explicit files, code snippets, and verification commands.
+- Type consistency: shared names are consistent (`conversation_id`, `message`, `delta/done/error` events, `AgentService.stream_reply` flow, conversation/message repository paths).
