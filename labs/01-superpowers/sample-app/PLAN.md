@@ -1,6 +1,6 @@
 # mdtodo Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:test-driven-development to implement this plan task-by-task. Write each test first, verify it fails, write the minimum code to pass, then refactor only after green. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build `mdtodo`, a standard-library Python CLI that manages a markdown checkbox todo file.
 

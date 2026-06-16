@@ -54,7 +54,7 @@ Prereq → Install → Configure → Brief → Design → Implement → Verify &
 | Configure | 프로젝트 컨텍스트 연결 | `AGENTS.md`, Superpowers 자동 트리거 | `.gstack/skills`, `AGENTS.md` | MCP 등록, Seed/Ledger 워크플로우 | `/setup-matt-pocock-skills`, `CONTEXT.md`, ADR | `.github/hooks/*.json` | `.github/prompts`, `.goal/STATE.md` |
 | Brief | 만들 앱 정의 | `mdtodo` CLI | 하루 한 줄 회고 웹 | 자연어 우선순위 CLI | 결정 기록 CLI | 노트 CLI | 목표 추적 CLI |
 | Design | 요구사항/설계 추출 | `brainstorming` | `/office-hours`, `/plan-ceo-review`, `/plan-eng-review` | `ooo interview`, Seed | `/grill-with-docs` | 검증 hook 설계 | `/goal` contract 설계 |
-| Implement | 계획 기반 구현 | `writing-plans`, `subagent-driven-development`, TDD | `/autoplan` 후 단계별 구현 | `ooo execute --seed <id>` | `/tdd` | `postToolUse`, `sessionEnd` | checkpoint loop |
+| Implement | 계획 기반 구현 | `writing-plans`, `test-driven-development` | `/autoplan` 후 단계별 구현 | `ooo execute --seed <id>` | `/tdd` | `postToolUse`, `sessionEnd` | checkpoint loop |
 | Verify & Retrospect | 테스트, 리뷰, 다음 반복 | `requesting-code-review`, branch finish | `/review`, `/qa`, `/retro` | `ooo evaluate`, `ooo evolve` | `/diagnose`, `/zoom-out` | `make lint`, `make test`, `make verify` | `/goal status`, `make verify`, progress log |
 
 ## 빠른 시작
@@ -89,13 +89,12 @@ copilot plugin install superpowers@superpowers-marketplace
 
 이 랩에서는 `labs/01-superpowers/install.sh`가 위 명령을 실행하고, 설치 후 `copilot plugin list`로 확인합니다.
 
-샘플 앱은 **마크다운 할 일 CLI (`mdtodo`)** 입니다. Python 표준 라이브러리만 사용하며, Superpowers의 기본 워크플로우를 그대로 실습합니다.
+샘플 앱은 **마크다운 할 일 CLI (`mdtodo`)** 입니다. Python 표준 라이브러리만 사용하며, Superpowers의 TDD 중심 워크플로우를 실습합니다.
 
 1. `brainstorming`으로 `BRIEF.md`에서 설계 문서 `DESIGN.md` 생성
 2. `writing-plans`로 작은 구현 태스크를 `PLAN.md`에 작성
-3. `subagent-driven-development`로 태스크 실행
-4. `test-driven-development`로 RED → GREEN → REFACTOR 유지
-5. `requesting-code-review`와 `finishing-a-development-branch`로 검증과 회고
+3. `test-driven-development`로 각 태스크를 RED → GREEN → REFACTOR 순서로 구현
+4. `requesting-code-review`와 `finishing-a-development-branch`로 검증과 회고
 
 실행 위치:
 

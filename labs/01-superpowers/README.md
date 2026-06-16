@@ -4,7 +4,7 @@
 
 원본: <https://github.com/obra/superpowers>
 
-핵심: 브레인스토밍 → 워크트리 → 플랜 → 서브에이전트 실행 → TDD → 코드 리뷰 → 브랜치 마감의 **자동 트리거 스킬**.
+핵심: 브레인스토밍 → 워크트리 → 플랜 → TDD 구현 → 코드 리뷰 → 브랜치 마감의 **자동 트리거 스킬**.
 
 ---
 
@@ -67,13 +67,12 @@ GHCP 세션에서 [`prompts.md`](prompts.md)의 **Brainstorm** 섹션을 그대�
 
 결과를 `sample-app/DESIGN.md`로 저장합니다.
 
-## 6. Implement (Superpowers `writing-plans` + `subagent-driven-development` + `test-driven-development`)
+## 6. Implement (Superpowers `writing-plans` + `test-driven-development`)
 
-[`prompts.md`](prompts.md)의 **Plan → Execute → TDD** 섹션을 순서대로 실행합니다.
+[`prompts.md`](prompts.md)의 **Plan → Execute (TDD)** 섹션을 순서대로 실행합니다.
 
 - `writing-plans` 스킬이 작은 단위 태스크 목록을 만들고
-- `subagent-driven-development`가 태스크별로 서브에이전트를 띄워 실행하며
-- `test-driven-development` 스킬이 RED → GREEN → REFACTOR를 강제합니다.
+- `test-driven-development` 스킬이 태스크별로 RED → GREEN → REFACTOR를 강제합니다.
 
 이 랩의 샘플 앱은 Python으로 구현하도록 BRIEF에서 지정합니다. 표준 라이브러리만 사용해 추가 의존성을 피합니다.
 

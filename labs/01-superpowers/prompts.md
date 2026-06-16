@@ -19,12 +19,12 @@ Use the writing-plans skill. Based on DESIGN.md, break the implementation into
 and the verification command. Save the plan as PLAN.md.
 ```
 
-## Execute (서브에이전트)
+## Execute (TDD)
 
 ```
-Use the subagent-driven-development skill to execute PLAN.md. Strictly follow
-test-driven-development: write a failing test, watch it fail, write the minimum
-code to pass, commit. Use only the Python standard library. After each task,
+Use the test-driven-development skill to execute PLAN.md task by task. For each
+task, write a failing test, watch it fail, write the minimum code to pass, then
+refactor only if needed. Use only the Python standard library. After each task,
 run `python3 -m unittest discover -s tests` and report the result.
 ```
 
