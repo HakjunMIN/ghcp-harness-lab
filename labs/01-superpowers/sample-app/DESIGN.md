@@ -1,129 +1,126 @@
-# mdtodo Design
+# ChatGPT-style App Design (MVP)
 
 ## Summary
 
-`mdtodo` is a small Python CLI for managing a markdown checkbox todo file. It
-supports adding todos, listing incomplete todos, and marking the Nth incomplete
-todo done. It uses only the Python standard library and runs as:
-
-```bash
-uv run python -m mdtodo ...
-```
+Build an MVP chat application with a polished ChatGPT-like UI, Python backend,
+`uv` workflow, Microsoft Agent Framework orchestration, and Azure OpenAI as the
+LLM provider.
 
 ## Scope
 
 ### Goals
 
-- Read the todo file from `MDTODO_FILE`, or use `./tasks.md` by default.
-- Store todos as markdown checkbox lines: `- [ ] text` or `- [x] text`.
-- Append new incomplete todos with `add TEXT`.
-- List only incomplete todos, renumbered from 1.
-- Mark the Nth incomplete todo complete with `done N`.
-- Preserve completed todos and non-todo markdown lines.
-- Report invalid `N` on stderr and exit with code 1.
+- ChatGPT-like single-page UX with sidebar + chat panel + composer.
+- React + Vite frontend.
+- FastAPI backend.
+- Microsoft Agent Framework integration with a single agent.
+- Streaming responses via SSE.
+- SQLite-based conversation/message persistence.
+- No authentication in MVP.
 
 ### Non-goals
 
-- Due dates.
-- Priorities.
-- Remote sync.
-- TUI behavior.
-- Non-standard-library dependencies.
+- Multi-agent orchestration.
+- OAuth/social login.
+- Team collaboration, sharing, or admin console.
+- Advanced RAG, plugins, billing, and analytics.
 
 ## Architecture
 
-The implementation is a single module, `mdtodo.py`, with small internal seams:
+### Frontend
 
-- `main(argv=None)` handles CLI parsing, command dispatch, user-visible output,
-  and process-style exit codes.
-- A path helper resolves `MDTODO_FILE`, defaulting to `./tasks.md` relative to
-  the current working directory.
-- File helpers read and write raw lines. They preserve all existing lines except
-  for the single checkbox line changed by `done`.
-- Pure todo helpers identify markdown checkbox lines, collect incomplete items
-  in display order, and map a displayed number back to the source line.
+- React + Vite SPA.
+- Main layout:
+  - `conversation-nav` (left): conversation list, create/select conversation.
+  - `chat-panel` (center): message timeline and streaming assistant bubble.
+  - `composer` (bottom): prompt input, send, and stop generation.
 
-This keeps command behavior easy to test while avoiding unnecessary classes or
-packaging.
+### Backend
 
-## Command behavior
+- FastAPI application exposing REST + SSE endpoints.
+- Service boundaries:
+  - API layer: request validation, response shaping, error mapping.
+  - Agent service: Microsoft Agent Framework wrapper around single agent runs.
+  - Repository layer: SQLite reads/writes for conversations and messages.
 
-### `add TEXT`
+### AI Layer
 
-`add` resolves the todo file path and appends a new line:
+- Agent Framework executes one configured agent per conversation turn.
+- Agent calls Azure OpenAI.
+- Streamed output tokens are relayed to frontend as SSE events.
 
-```markdown
-- [ ] TEXT
-```
+## Components and Responsibilities
 
-If the file does not exist, `add` creates it. The command prints:
+- `ui-shell`: theme, spacing, responsive structure.
+- `conversation-nav`: list/search/switch/create conversations.
+- `chat-panel`: render timeline, loading/stream states, auto-scroll behavior.
+- `composer`: prompt validation, submit/abort interactions.
+- `api-client`: HTTP + SSE abstraction, retry policy, normalized errors.
+- `chat router`: endpoint handlers (`/api/chat/stream`, conversation APIs).
+- `agent service`: run prompt through Agent Framework and emit deltas.
+- `sqlite repository`: persist and query conversation/message entities.
 
-```text
-Added #N: TEXT
-```
+## Data Flow
 
-`N` is the new todo's incomplete-list number after appending.
+1. User submits prompt in `composer`.
+2. Frontend creates optimistic user message and opens SSE stream.
+3. Backend validates payload and stores user message in SQLite.
+4. Agent service runs single Agent Framework flow against Azure OpenAI.
+5. Backend emits SSE events: `delta`, `done`, `error`.
+6. Frontend incrementally updates assistant message bubble.
+7. On completion, backend stores final assistant message in SQLite.
+8. Conversation list/history APIs hydrate UI on reload.
 
-### `list`
+## API Surface (MVP)
 
-`list` prints only incomplete todo lines. Completed todos and non-todo markdown
-are omitted from output but remain in the file. Output is renumbered from 1:
+- `POST /api/chat/stream` (SSE response)
+  - Input: `conversation_id` (optional for new), `message`.
+  - Events: `delta`, `done`, `error`.
+- `GET /api/conversations`
+- `POST /api/conversations`
+- `GET /api/conversations/{id}/messages`
 
-```markdown
-- [ ] 1. First incomplete task
-- [ ] 2. Second incomplete task
-```
+## Persistence Model
 
-If the file does not exist, `list` prints nothing and exits 0.
+### `conversations`
 
-### `done N`
+- `id` (string/uuid)
+- `title` (derived from first user prompt or fallback)
+- `created_at`
+- `updated_at`
 
-`done` treats `N` as the displayed number among incomplete todos. It updates the
-matching source line from `- [ ] TEXT` to `- [x] TEXT`, preserves all other
-lines, writes the file back, and prints:
+### `messages`
 
-```text
-Done: TEXT
-```
+- `id`
+- `conversation_id`
+- `role` (`user` | `assistant`)
+- `content`
+- `created_at`
 
-If the file does not exist, if `N` is not an integer, if `N < 1`, or if `N`
-exceeds the number of incomplete todos, the command writes an error to stderr
-and exits 1.
+## Error Handling
 
-## Parsing rules
+- Validation errors return 400 with clear, user-facing messages.
+- Agent/Azure failures emit SSE `error` event and end stream gracefully.
+- Stream interruption preserves received partial text in UI.
+- Persistence failures are explicit; UI indicates when response was shown but
+  save failed.
+- Structured backend logging for traceability (without leaking secrets).
 
-The parser recognizes these todo line forms:
+## Testing Strategy
 
-- `- [ ] text`
-- `- [x] text`
+- Backend unit tests: API handlers, repository ops, agent service boundaries.
+- Backend integration tests: prompt → stream events → DB persistence path.
+- Frontend tests: component state transitions for send/stream/error/retry.
+- Minimal E2E: send prompt and verify streamed assistant completion rendered.
+- Manual UX checks focused on ChatGPT-like polish:
+  - keyboard flow,
+  - streaming readability,
+  - conversation switching,
+  - responsive layout quality.
 
-Only lowercase `x` is treated as completed. Lines that do not match these forms
-are non-todo markdown and are preserved. Line endings are preserved where
-possible; rewritten `done` lines keep a normal trailing newline when the source
-line had one.
+## Success Criteria (MVP)
 
-## Error handling
-
-User-facing command shape and invalid index errors are surfaced through stderr
-with exit code 1. Successful commands write their normal output to stdout and
-exit 0. The implementation should not silently ignore invalid `done` indexes,
-because that could make a user believe a task was completed when it was not.
-
-## Testing
-
-Tests live in `tests/test_mdtodo.py` and run with:
-
-```bash
-python3 -m unittest discover -s tests
-```
-
-The tests should use temporary directories or files and isolate `MDTODO_FILE`.
-Coverage should include:
-
-- adding to a missing file;
-- listing incomplete todos with renumbering;
-- marking the Nth incomplete todo done;
-- preserving completed todos and unrelated markdown;
-- using `MDTODO_FILE` instead of `./tasks.md`;
-- invalid `done` indexes and non-integer values;
-- missing-file behavior for `list` and `done`.
+- User can create/select conversations and send prompts.
+- Assistant response streams in real time.
+- Reload restores conversation history from SQLite.
+- Core UX feels polished and close to ChatGPT interaction patterns.
